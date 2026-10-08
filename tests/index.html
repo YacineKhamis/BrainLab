@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>BrainLab — tests de validation</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <script type="module" src="runner.js"></script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="../index.html"><span>BrainLab</span></a>
+    <span class="muted">Tests de validation</span>
+  </header>
+  <main id="main">
+    <section class="panel">
+      <h1>Tests de validation</h1>
+      <p>Pour chaque catégorie et chaque niveau, le banc génère <strong>N</strong> items à partir de graines fixes, revalide chacun avec son solveur (réponse unique, chaque distracteur viole au moins une règle), vérifie que la même graine redonne le même item et que le rendu ne lève pas d’erreur.</p>
+      <form id="cfg" class="toolbar">
+        <label>Items par catégorie et par niveau <input id="n" type="number" min="10" max="5000" step="10" value="1000"></label>
+        <button class="btn primary" type="submit" id="go">Lancer les tests</button>
+        <span class="muted small">1000 items × 6 catégories × 10 niveaux = 60 000 items (quelques minutes).</span>
+      </form>
+      <progress id="prog" max="1" value="0" hidden></progress>
+      <p id="status" class="big" aria-live="polite"></p>
+    </section>
+    <section class="panel">
+      <h2>Tests unitaires</h2>
+      <ul id="unit"></ul>
+    </section>
+    <section class="panel">
+      <h2>Rapport</h2>
+      <div class="table-wrap">
+        <table class="data" id="report">
+          <thead><tr><th>Catégorie</th><th>Niv.</th><th>Items</th><th>Tentatives</th><th>Taux de rejet</th><th>Uniques</th><th>Ambigus</th><th>Échecs</th><th>Graine non reproductible</th><th>Erreurs de rendu</th><th>Temps moyen</th><th>Temps max</th><th>Motifs de rejet</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

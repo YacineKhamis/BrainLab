@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="BrainLab : entraînement au raisonnement (matrices, suites, visuo-spatial, logique, analogies, mémoire de travail) avec items procéduraux validés.">
+  <title>BrainLab</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Aller au contenu</a>
+  <header class="top">
+    <a class="brand" href="#/" aria-label="BrainLab, accueil">
+      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect x="2" y="2" width="28" height="28" rx="7" class="logo-bg"/><path class="logo-fg" d="M9 10h6v6H9zM17 16h6v6h-6zM17 10l6 0M9 22l6 0"/></svg>
+      <span>BrainLab</span>
+    </a>
+    <nav class="nav" aria-label="Navigation principale">
+      <a href="#/" data-page="home">Accueil</a>
+      <a href="#/train" data-page="train">Entraînement</a>
+      <a href="#/exam" data-page="exam">Examen</a>
+      <a href="#/replay" data-page="replay">Rejouer</a>
+      <a href="#/stats" data-page="stats">Statistiques</a>
+    </nav>
+  </header>
+  <main id="main" tabindex="-1">
+    <noscript><p>BrainLab nécessite JavaScript (modules ES).</p></noscript>
+  </main>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <footer class="foot">
+    <p>100 % statique · aucune requête réseau externe · données conservées dans votre navigateur · <a href="tests/index.html">tests de validation</a> · licence MIT</p>
+  </footer>
+</body>
+</html>
