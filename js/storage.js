@@ -9,8 +9,12 @@ function blank() {
   return {
     version: VERSION,
     history: [], // { ts, seed, category, level, correct, timeMs, mode }
-    levels: { matrices: 1, sequences: 1, spatial: 1, logic: 1, verbal: 1, memory: 1 },
-    settings: { lockLevel: false, examSize: 36, lastCategory: 'matrices' },
+    levels: {
+      matrices: 1, sequences: 1, spatial: 1, logic: 1, verbal: 1, memory: 1,
+      similitudes: 1, vocabulaire: 1, information: 1, cubes: 1, puzzles: 1, balances: 1,
+      chiffres: 1, arithmetique: 1, lettresChiffres: 1, symboles: 1, code: 1,
+    },
+    settings: { lockLevel: false, examSize: 36, lastCategory: 'matrices', waisDifficulty: 'moyen' },
   };
 }
 
@@ -58,7 +62,7 @@ export function sanitize(obj) {
         level: Math.min(10, Math.max(1, Math.round(h.level))),
         correct: h.correct,
         timeMs: Math.max(0, Number(h.timeMs) || 0),
-        mode: ['training', 'exam', 'replay'].includes(h.mode) ? h.mode : 'training',
+        mode: ['training', 'exam', 'replay', 'wais'].includes(h.mode) ? h.mode : 'training',
       }));
   }
   if (obj.levels && typeof obj.levels === 'object') {

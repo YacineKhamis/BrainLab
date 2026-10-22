@@ -43,6 +43,8 @@ moins une règle. Tout item ambigu est rejeté puis régénéré.
   (issue du solveur) indique quelle règle elle viole.
 - **Examen** : 30, 36 ou 40 items de difficulté croissante (niveau 1 → 10), chrono
   global, aucun retour avant la fin, puis correction complète item par item.
+- **WAIS-IV** : batterie de subtests calquée sur l’échelle de Wechsler pour adultes,
+  en quatre niveaux (facile, moyen, difficile, extrême) — voir plus bas.
 - **Rejouer** : saisir une graine (`SEQ-05-0a1b2c3d`) régénère exactement le même item.
 - **Statistiques** : réussite par catégorie et par niveau, temps moyen, niveau
   maximal stable (≥ 70 % de réussite sur les 20 derniers items d'un niveau), courbes
@@ -58,6 +60,47 @@ moins une règle. Tout item ambigu est rejeté puis régénéré.
 | LOG | Logique | syllogismes à 3 ou 4 catégories, déduction propositionnelle avec négations multiples, grilles de contraintes (énigmes de type Einstein). |
 | VER | Analogies verbales | 17 relations, ~490 paires, du vocabulaire courant (chat → chaton) au vocabulaire érudit (sigillographie → sceaux, Pont-à-Mousson → Mussipontains). |
 | MEM | Mémoire de travail | empan de chiffres à l'envers (3 à 12 chiffres), n-back spatial (1 à 7), dual n-back position + lettre (1 à 6). |
+
+## Batterie de type WAIS-IV
+
+Page `#/wais`. Les subtests reprennent la structure de la WAIS-IV (quatre indices),
+avec des **items originaux** générés et validés comme le reste de l’application ;
+aucun item de l’échelle officielle n’est reproduit. Les subtests sont administrés
+dans l’ordre de l’échelle, chacun avec des items de difficulté croissante.
+
+| Indice | Subtest (code de graine) | Format |
+|---|---|---|
+| ICV — compréhension verbale | Similitudes (SIM) | trouver ce que deux notions ont en commun (choix multiple) |
+| | Vocabulaire (VOC) | retrouver la définition d’un mot (choix multiple) |
+| | Information (INF) | culture générale (choix multiple) |
+| IRP — raisonnement perceptif | Cubes (CUB) | reproduire un motif rouge et blanc avec des blocs, chronométré (interactif) |
+| | Matrices (MAT) | les matrices visuelles existantes, avec temps limite |
+| | Puzzles visuels (PUZ) | choisir les 3 pièces sur 6 qui reconstituent la figure (interactif) |
+| | Balances (BAL, supplémentaire) | équilibrer une balance d’après d’autres balances |
+| IMT — mémoire de travail | Mémoire des chiffres (CHI) | ordre direct, inverse et croissant (interactif) |
+| | Arithmétique (ARI) | problèmes de calcul mental en temps limité (interactif) |
+| | Séquence lettres-chiffres (LCS, supplémentaire) | chiffres croissants puis lettres alphabétiques (interactif) |
+| IVT — vitesse de traitement | Symboles (SYM) | une cible est-elle dans le groupe ? 2 minutes, note = bonnes − erreurs |
+| | Code (COD) | associer chiffres et symboles selon une clé, 2 minutes |
+
+Quatre niveaux de batterie, qui fixent l’intervalle des niveaux d’items (1 à 10) :
+
+| Niveau | Items | Repère |
+|---|---|---|
+| Facile | 1 → 3 | items courants, peu d’éléments, temps confortable |
+| Moyen | 3 → 6 | l’essentiel de l’échelle adulte |
+| Difficile | 5 → 8 | derniers items de l’échelle et au-delà |
+| Extrême | 8 → 10 | volontairement au-delà du plafond (cubes 4×4 sans grille, empans de 9-10, 5 formes sur les balances…) |
+
+Règle d’arrêt optionnelle (comme dans l’échelle) : un subtest s’arrête après 3 échecs
+consécutifs (2 pour les Cubes). Le résultat affiche un taux de réussite par subtest,
+par indice (ICV, IRP, IMT, IVT), les indices composites IAG (ICV + IRP) et ICC
+(IMT + IVT), une lecture du profil (points forts et faibles relatifs, homogénéité) et
+la correction détaillée de chaque item. **Il n’y a aucun étalonnage : ces taux ne se
+convertissent ni en notes standard ni en QI et ne permettent aucun diagnostic.**
+
+Chaque subtest est aussi disponible seul dans l’entraînement adaptatif (groupe
+« Subtests de type WAIS-IV » du menu des catégories).
 
 ## Échelle de difficulté (10 niveaux)
 
@@ -98,13 +141,15 @@ par exemple avec `python3 -m http.server 8000`, puis ouvrez `http://localhost:80
 ```
 index.html            page unique (CSP default-src 'self')
 css/style.css         styles, thème clair/sombre automatique, responsive
-js/app.js             navigation (routeur sur le hash), modes, interface, mémoire interactive
+js/app.js             navigation (routeur sur le hash), modes, interface, items interactifs, batterie WAIS-IV
+js/wais.js            batterie WAIS-IV : indices, subtests, niveaux, construction des séries, scores
 js/engine.js          génération + validation + régénération déterministe
 js/rng.js             générateur pseudo-aléatoire à graine (cyrb53 + mulberry32), format des graines
 js/storage.js         localStorage (try/catch), export / import / effacement
 js/stats.js           tableaux, niveau maximal stable, courbes SVG
 js/util.js            échappement HTML, aides SVG
 js/data/lexique.js    relations et paires des analogies
+js/data/wais.js       banques Similitudes, Vocabulaire, Information (paliers 1 à 5)
 js/generators/        un générateur par catégorie (+ index.js)
 js/solvers/           un solveur par catégorie (+ index.js)
 tests/index.html      banc de validation exécutable dans le navigateur
@@ -131,9 +176,14 @@ Chaque fichier de `js/generators/` exporte par défaut :
   renderStimulus(item) → html/svg,
   renderOption(item, i) → html/svg,
   renderExplanation(item) → html,
-  score?(item, response) → { correct, detail }   // items interactifs (mémoire)
+  score?(item, response) → { correct, detail }   // items interactifs
+  mount?(stage, item, ctx) → { collect() }       // items interactifs génériques
 }
 ```
+
+`mount` reçoit `ctx = { later, interval, setKeys, finish(response) }` : minuteries et
+raccourcis clavier sont annulés automatiquement à la fin de l’item ; `collect()`
+renvoie la réponse partielle quand l’item est interrompu (« Passer », temps écoulé).
 
 Un item contient `category`, `level`, `subtype`, `prompt`, `data` (données propres à
 la catégorie), `options`, `answer` (indice de la bonne option), `rules` (explications)
@@ -163,11 +213,17 @@ Les solveurs n'utilisent **pas** les règles déclarées par le générateur :
   « aussi » vrais mais non utilisés en question) ; l'option doit partager une relation avec l'exemple.
 - **mémoire** : recalcul indépendant des cibles, contraintes perceptives (pas de
   chiffre répété consécutivement, pas de triple répétition, taux de cibles 20–42 %).
+- **subtests WAIS-IV** : recoupement avec les banques (verbal) ; symétrie et nombre de
+  diagonales des Cubes ; pavage exhaustif des 20 triplets de pièces (Puzzles, un seul
+  triplet doit convenir) ; noyau exact du système des Balances (poids fixés à un
+  facteur près, une seule option de même poids) ; réévaluation en rationnels de
+  l’Arithmétique (divisions exactes, données présentes dans l’énoncé) ; clés
+  recalculées pour la mémoire et la vitesse (Symboles : au plus une cible par groupe).
 
 ### Tests
 
 Ouvrez `tests/index.html` (ou `tests/?n=100&auto=1`). Le banc génère 1 000 items par
-catégorie et par niveau (60 000 au total), revalide chacun, vérifie que la même
+catégorie et par niveau (170 000 au total, subtests WAIS-IV compris), revalide chacun, vérifie que la même
 graine redonne le même item et que le rendu fonctionne, puis affiche : taux de rejet,
 nombre d'items uniques / ambigus, échecs, temps moyen et maximal de génération, motifs de rejet.
 

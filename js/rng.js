@@ -8,6 +8,18 @@ export const CATEGORY_CODES = {
   logic: 'LOG',
   verbal: 'VER',
   memory: 'MEM',
+  // Subtests de type WAIS-IV
+  similitudes: 'SIM',
+  vocabulaire: 'VOC',
+  information: 'INF',
+  cubes: 'CUB',
+  puzzles: 'PUZ',
+  balances: 'BAL',
+  chiffres: 'CHI',
+  arithmetique: 'ARI',
+  lettresChiffres: 'LCS',
+  symboles: 'SYM',
+  code: 'COD',
 };
 
 const CODE_TO_CATEGORY = Object.fromEntries(
