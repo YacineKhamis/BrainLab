@@ -2,7 +2,7 @@
 // et par niveau, revalide chaque item avec son solveur, vérifie la
 // reproductibilité des graines et le rendu, et mesure les temps de génération.
 
-import { generateFromSeed, CATEGORIES } from '../js/engine.js';
+import { generateFromSeed, ALL_CATEGORIES as CATEGORIES } from '../js/engine.js';
 import { GENERATORS } from '../js/generators/index.js';
 import { SOLVERS } from '../js/solvers/index.js';
 import { formatSeed, hashString, parseSeed, Rng } from '../js/rng.js';

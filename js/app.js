@@ -1,15 +1,16 @@
 // BrainLab — navigation, modes (entraînement, examen, rejouer), interface.
 
-import { CATEGORIES, generateItem, generateFromSeed } from './engine.js';
+import { CATEGORIES, WAIS_CATEGORIES, ALL_CATEGORIES, generateItem, generateFromSeed } from './engine.js';
 import { GENERATORS } from './generators/index.js';
 import { parseSeed } from './rng.js';
 import * as store from './storage.js';
 import { table, maxStableLevel, progressionCharts, STABLE_WINDOW } from './stats.js';
 import { esc } from './util.js';
+import { INDICES, SUBTESTS, DIFFICULTIES, subtestById, difficultyById, buildSubtest, subtestScore, indexScores, profile } from './wais.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const main = $('#main');
-const catById = Object.fromEntries(CATEGORIES.map((c) => [c.id, c]));
+const catById = Object.fromEntries(ALL_CATEGORIES.map((c) => [c.id, c]));
 
 // Tâche en cours (minuteries de mémoire, chrono d'examen) à annuler en changeant de page.
 let cleanups = [];
@@ -60,7 +61,8 @@ function bindSeedCopy(root) {
 
 function optionsHtml(item) {
   const gen = GENERATORS[item.category];
-  const cls = ['matrices', 'spatial'].includes(item.category) ? 'options visual' : item.category === 'logic' ? 'options list' : 'options textual';
+  const layout = gen.layout || (['matrices', 'spatial', 'balances'].includes(item.category) ? 'visual' : item.category === 'logic' ? 'list' : 'textual');
+  const cls = `options ${layout}`;
   return `<div class="${cls}" role="group" aria-label="Réponses possibles">${item.options.map((_, i) => `
     <button class="opt" type="button" data-i="${i}"><span class="opt-num">${i + 1}</span>${gen.renderOption(item, i)}</button>`).join('')}</div>`;
 }
@@ -114,6 +116,39 @@ function markOptions(root, item, chosen) {
     if (i === item.answer) b.classList.add('correct');
     else if (i === chosen) b.classList.add('wrong');
   });
+}
+
+// ---------------------------------------------------------------- Items interactifs
+
+// Items dont le générateur fournit mount() (subtests de type WAIS-IV) ; les
+// items de la catégorie « memory » gardent leur présentation dédiée.
+function mountInteractive(root, item, onDone) {
+  const gen = GENERATORS[item.category];
+  if (!gen.mount) return mountMemory(root, item, onDone);
+  root.innerHTML = `${itemHeader(item)}
+    <p class="prompt">${esc(item.prompt)}</p>
+    <div class="ia-stage"></div>`;
+  bindSeedCopy(root);
+  const timers = [], intervals = [];
+  const stop = () => { timers.forEach(clearTimeout); intervals.forEach(clearInterval); };
+  onLeave(stop);
+  let finished = false;
+  const t0 = performance.now();
+  const ctx = {
+    later: (fn, ms) => timers.push(setTimeout(fn, ms)),
+    interval: (fn, ms) => intervals.push(setInterval(fn, ms)),
+    setKeys: (fn) => { keyHandler = fn; },
+    finish: (response) => {
+      if (finished) return;
+      finished = true;
+      keyHandler = null;
+      stop();
+      item.response = response;
+      onDone(gen.score(item, response), performance.now() - t0, response);
+    },
+  };
+  const ctl = gen.mount($('.ia-stage', root), item, ctx) || {};
+  return { abort: () => ctx.finish(ctl.collect ? ctl.collect() : null) };
 }
 
 // ---------------------------------------------------------------- Mémoire (interactif)
@@ -212,6 +247,7 @@ function viewHome() {
     <div class="hero-actions">
       <a class="btn primary" href="#/train">S’entraîner</a>
       <a class="btn" href="#/exam">Passer un examen</a>
+      <a class="btn" href="#/wais">Batterie WAIS-IV</a>
       <a class="btn" href="#/replay">Rejouer une graine</a>
     </div>
   </section>
@@ -226,6 +262,8 @@ function viewHome() {
     }).join('')}
   </section>
   <section class="info">
+    <h2>Batterie de type WAIS-IV</h2>
+    <p>Une série de subtests calquée sur la structure de l’échelle de Wechsler pour adultes (4<sup>e</sup> édition) : compréhension verbale, raisonnement perceptif, mémoire de travail et vitesse de traitement, en quatre niveaux (facile, moyen, difficile, extrême). <a href="#/wais">Lancer la batterie</a>.</p>
     <h2>Échelle de difficulté</h2>
     <ul>
       <li><strong>Niveaux 1 à 4</strong> : comparables aux tests en ligne grand public.</li>
@@ -247,6 +285,7 @@ function viewTrain(param) {
       <select id="t-cat">
         ${CATEGORIES.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}
         <option value="mixed">Mixte (toutes catégories)</option>
+        <optgroup label="Subtests de type WAIS-IV">${WAIS_CATEGORIES.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</optgroup>
       </select>
     </label>
     <label>Niveau
@@ -282,7 +321,7 @@ function viewTrain(param) {
     }
     syncLevel();
     if (current.interactive) {
-      mountMemory(itemEl, current, (sc, ms) => finish(sc.correct, null, ms, sc.detail));
+      mountInteractive(itemEl, current, (sc, ms) => finish(sc.correct, null, ms, sc.detail));
     } else {
       mountChoice(itemEl, current, (i, ms) => finish(i === current.answer, i, ms));
     }
@@ -396,7 +435,7 @@ function runExam(items) {
       idx++;
       show();
     };
-    if (item.interactive) memCtl = mountMemory(itemEl, item, (sc, ms) => record(sc.correct, null, ms, sc.detail));
+    if (item.interactive) memCtl = mountInteractive(itemEl, item, (sc, ms) => record(sc.correct, null, ms, sc.detail));
     else { memCtl = null; mountChoice(itemEl, item, (i, ms) => record(i === item.answer, i, ms)); }
   };
   const end = () => {
@@ -475,7 +514,7 @@ function viewReplay(seedParam) {
       <input id="r-seed" placeholder="MAT-07-3fa9c21b" autocomplete="off" spellcheck="false" aria-label="Graine">
       <button class="btn primary" type="submit">Rejouer</button>
     </form>
-    <p class="muted small">Codes : MAT (matrices), SEQ (suites), SPA (visuo-spatial), LOG (logique), VER (analogies), MEM (mémoire). Les items rejoués n’entrent pas dans les statistiques.</p>
+    <p class="muted small">Codes : MAT (matrices), SEQ (suites), SPA (visuo-spatial), LOG (logique), VER (analogies), MEM (mémoire) ; subtests de type WAIS-IV : SIM (similitudes), VOC (vocabulaire), INF (information), CUB (cubes), PUZ (puzzles visuels), BAL (balances), CHI (mémoire des chiffres), ARI (arithmétique), LCS (séquence lettres-chiffres), SYM (symboles), COD (code). Les items rejoués n’entrent pas dans les statistiques.</p>
   </section>
   <article class="item" id="r-item"></article>
   <div id="r-after"></div>`;
@@ -494,7 +533,7 @@ function viewReplay(seedParam) {
       after.innerHTML = `<div class="feedback ${correct ? 'ok' : 'ko'}" role="status"><strong>${correct ? 'Bonne réponse' : 'Réponse incorrecte'}</strong><span>${fmtTime(ms)}</span><button class="btn" type="button" id="r-again">Rejouer encore</button></div>${explanationHtml(item, chosen, detail)}`;
       $('#r-again').addEventListener('click', () => play(item.seed));
     };
-    if (item.interactive) mountMemory(itemEl, item, (sc, ms) => done(sc.correct, null, ms, sc.detail));
+    if (item.interactive) mountInteractive(itemEl, item, (sc, ms) => done(sc.correct, null, ms, sc.detail));
     else mountChoice(itemEl, item, (i, ms) => done(i === item.answer, i, ms));
   };
   $('#r-form').addEventListener('submit', (e) => {
@@ -504,6 +543,227 @@ function viewReplay(seedParam) {
     play(v);
   });
   if (seedParam) { input.value = seedParam; play(seedParam); }
+}
+
+// ---------------------------------------------------------------- Batterie WAIS-IV
+
+const pctText = (v) => (v === null || v === undefined ? '—' : `${Math.round(v * 100)} %`);
+const indexName = Object.fromEntries(INDICES.map((i) => [i.id, i.name]));
+
+function viewWais() {
+  const settings = store.getSettings();
+  const diff = difficultyById[settings.waisDifficulty] ? settings.waisDifficulty : 'moyen';
+  main.innerHTML = `
+  <section class="panel">
+    <h1>Batterie de type WAIS-IV</h1>
+    <p>Une série de subtests organisée comme l’échelle d’intelligence de Wechsler pour adultes (WAIS-IV) : quatre indices — compréhension verbale (ICV), raisonnement perceptif (IRP), mémoire de travail (IMT) et vitesse de traitement (IVT) — et leurs subtests, administrés dans l’ordre de l’échelle, avec des items de difficulté croissante.</p>
+    <p class="muted small">Entraînement uniquement : les items sont originaux (aucun item de l’échelle officielle n’est reproduit), le format est adapté à l’écran (choix multiples pour les subtests verbaux) et il n’existe aucun étalonnage. Les résultats sont des taux de réussite, jamais un QI ni un diagnostic : seul un psychologue peut administrer et interpréter la WAIS-IV.</p>
+    <form id="w-form">
+      <h2>Niveau</h2>
+      <div class="w-levels" role="radiogroup" aria-label="Niveau de difficulté">${DIFFICULTIES.map((d) => `
+        <label class="w-level"><input type="radio" name="w-diff" value="${d.id}"${d.id === diff ? ' checked' : ''}>
+          <span><strong>${esc(d.name)}</strong><span class="muted small">${esc(d.desc)}</span></span></label>`).join('')}
+      </div>
+      <h2>Subtests</h2>
+      <div class="w-indices">${INDICES.map((ix) => `
+        <fieldset class="w-index"><legend><span class="badge">${ix.id}</span> ${esc(ix.name)}</legend>
+          ${SUBTESTS.filter((st) => st.index === ix.id).map((st) => `
+          <label class="check w-sub"><input type="checkbox" name="w-sub" value="${st.id}"${st.core ? ' checked' : ''}>
+            <span>${esc(st.name)}${st.core ? '' : ' <span class="muted small">(supplémentaire)</span>'}<br><span class="muted small">${esc(st.desc)}</span></span></label>`).join('')}
+        </fieldset>`).join('')}
+      </div>
+      <p><label class="check"><input type="checkbox" id="w-stop" checked> Arrêter un subtest après plusieurs échecs consécutifs (règle d’arrêt, comme dans l’échelle)</label></p>
+      <p class="muted small" id="w-estimate"></p>
+      <p><button class="btn primary" type="submit">Commencer la batterie</button></p>
+    </form>
+  </section>`;
+  const form = $('#w-form');
+  const selected = () => [...form.querySelectorAll('input[name="w-sub"]:checked')].map((i) => i.value);
+  const estimate = () => {
+    const ids = selected();
+    const n = ids.reduce((s, id) => s + subtestById[id].count, 0);
+    const minutes = Math.round(ids.reduce((s, id) => s + (subtestById[id].speed ? 2.5 : subtestById[id].count * 0.7), 0));
+    $('#w-estimate').textContent = ids.length ? `${ids.length} subtest${ids.length > 1 ? 's' : ''}, ${n} item${n > 1 ? 's' : ''} · durée indicative : ${minutes} à ${Math.round(minutes * 1.6)} minutes.` : 'Sélectionnez au moins un subtest.';
+  };
+  form.addEventListener('change', estimate);
+  estimate();
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const ids = selected();
+    if (!ids.length) { toast('Sélectionnez au moins un subtest'); return; }
+    const difficulty = form.querySelector('input[name="w-diff"]:checked').value;
+    store.setSetting('waisDifficulty', difficulty);
+    runWais({ difficulty, subtests: SUBTESTS.filter((st) => ids.includes(st.id)).map((st) => st.id), discontinue: $('#w-stop').checked });
+  });
+}
+
+function runWais(cfg) {
+  const t0 = performance.now();
+  const runs = []; // { id, items, results: [{ correct, chosen, timeMs, detail, points, maxPoints, status }] }
+  let s = 0;
+
+  const intro = () => {
+    leave();
+    keyHandler = null;
+    if (s >= cfg.subtests.length) { showWaisResults(cfg, runs, performance.now() - t0); return; }
+    const st = subtestById[cfg.subtests[s]];
+    main.innerHTML = `
+    <section class="exam-bar"><span>Subtest ${s + 1} / ${cfg.subtests.length}</span><progress max="${cfg.subtests.length}" value="${s}"></progress><button class="btn small" type="button" id="w-end">Terminer la batterie</button></section>
+    <section class="panel w-intro">
+      <p><span class="badge">${st.index}</span> <span class="muted">${esc(indexName[st.index])}</span></p>
+      <h1>${esc(st.name)}</h1>
+      <p class="lead">${esc(st.desc)}</p>
+      <p>${st.speed ? 'Épreuve chronométrée de 2 minutes : soyez rapide et précis.' : `${st.modes ? st.modes.length : st.count} items de difficulté croissante.`}${st.timed ? ' Chaque item a un temps limite.' : ''}${cfg.discontinue && st.stop ? ` Le subtest s’arrête après ${st.stop} échecs consécutifs.` : ''}</p>
+      <p><button class="btn primary" type="button" id="w-go">Commencer</button> <button class="btn" type="button" id="w-skip">Passer ce subtest</button></p>
+    </section>`;
+    $('#w-go').focus();
+    $('#w-go').addEventListener('click', () => {
+      main.querySelector('.w-intro').innerHTML = '<p class="muted">Génération et validation des items…</p>';
+      setTimeout(() => {
+        let items;
+        try { items = buildSubtest(st.id, cfg.difficulty); } catch (e) { toast(e.message); s++; intro(); return; }
+        runs.push({ id: st.id, items, results: [] });
+        runItems(st, runs[runs.length - 1]);
+      }, 20);
+    });
+    $('#w-skip').addEventListener('click', () => { s++; intro(); });
+    $('#w-end').addEventListener('click', () => { if (confirm('Terminer la batterie maintenant ?')) showWaisResults(cfg, runs, performance.now() - t0); });
+  };
+
+  const runItems = (st, run) => {
+    let i = 0;
+    main.innerHTML = `
+    <section class="exam-bar"><span id="w-count"></span><progress id="w-prog" max="${run.items.length}" value="0"></progress><span class="timer" id="w-timer"></span>
+      <button class="btn small" type="button" id="w-pass">Passer</button><button class="btn small" type="button" id="w-end">Terminer la batterie</button></section>
+    <article class="item" id="w-item"></article>`;
+    const itemEl = $('#w-item');
+    let ctl = null, timer = null;
+    const clearTimer = () => { if (timer) clearInterval(timer); timer = null; $('#w-timer').textContent = ''; };
+    onLeave(clearTimer);
+    const next = () => {
+      clearTimer();
+      leave();
+      onLeave(clearTimer);
+      const fails = run.results.slice(-(st.stop || 0));
+      const stopRule = cfg.discontinue && st.stop && fails.length === st.stop && fails.every((r) => !r.correct);
+      if (i >= run.items.length || stopRule) {
+        while (run.results.length < run.items.length) run.results.push({ correct: false, chosen: null, timeMs: 0, detail: 'Non administré (règle d’arrêt).', status: 'stopped' });
+        if (stopRule) toast(`${st.name} : arrêt après ${st.stop} échecs consécutifs`);
+        s++;
+        intro();
+        return;
+      }
+      const item = run.items[i];
+      $('#w-count').textContent = `${st.name} — item ${i + 1} / ${run.items.length}`;
+      $('#w-prog').value = i;
+      const record = (r) => {
+        if (run.results.length > i) return;
+        run.results.push(r);
+        store.addResult({ seed: item.seed, category: item.category, level: item.level, correct: r.correct, timeMs: Math.round(r.timeMs), mode: 'wais' });
+        i++;
+        next();
+      };
+      if (item.interactive) {
+        ctl = mountInteractive(itemEl, item, (sc, ms) => record({ correct: sc.correct, chosen: null, timeMs: ms, detail: sc.detail, points: sc.points, maxPoints: sc.maxPoints, status: 'done' }));
+      } else {
+        ctl = mountChoice(itemEl, item, (k, ms) => record({ correct: k === item.answer, chosen: k, timeMs: ms, detail: k === null ? 'Temps écoulé.' : '', status: k === null ? 'timeout' : 'done' }));
+        if (st.timed) {
+          const start = performance.now();
+          const tick = () => {
+            const left = item.timeLimit * 1000 - (performance.now() - start);
+            $('#w-timer').textContent = `⏱ ${fmtTime(left)}`;
+            $('#w-timer').classList.toggle('urgent', left < 10000);
+            if (left <= 0) ctl.answer(null);
+          };
+          timer = setInterval(tick, 250);
+          tick();
+        }
+      }
+    };
+    $('#w-pass').addEventListener('click', () => {
+      if (ctl && ctl.abort) ctl.abort();
+      else if (ctl && ctl.answer) ctl.answer(null);
+    });
+    $('#w-end').addEventListener('click', () => {
+      if (!confirm('Terminer la batterie maintenant ? Les items restants de ce subtest seront comptés comme non réussis.')) return;
+      clearTimer();
+      leave();
+      keyHandler = null;
+      while (run.results.length < run.items.length) run.results.push({ correct: false, chosen: null, timeMs: 0, detail: 'Non traité.', status: 'stopped' });
+      showWaisResults(cfg, runs, performance.now() - t0);
+    });
+    next();
+  };
+
+  intro();
+}
+
+function barRow(label, v, cls = '') {
+  const w = v === null ? 0 : Math.round(v * 100);
+  return `<div class="w-bar ${cls}"><span class="w-bar-lab">${label}</span><svg class="w-bar-track" viewBox="0 0 100 10" preserveAspectRatio="none" role="img" aria-label="${w} %"><rect class="w-bar-bg" width="100" height="10"/><rect class="w-bar-fill" width="${w}" height="10"/></svg><span class="w-bar-val">${pctText(v)}</span></div>`;
+}
+
+function showWaisResults(cfg, runs, elapsed) {
+  leave();
+  keyHandler = null;
+  const done = runs.filter((r) => r.results.length);
+  const scores = Object.fromEntries(done.map((r) => [r.id, subtestScore(subtestById[r.id], r.results)]));
+  const ix = indexScores(scores);
+  const pr = profile(ix);
+  const diff = difficultyById[cfg.difficulty];
+  const gap = ix.ICV !== null && ix.IRP !== null ? ix.ICV - ix.IRP : null;
+  const lines = [];
+  if (pr.strengths.length) lines.push(`Point${pr.strengths.length > 1 ? 's' : ''} fort${pr.strengths.length > 1 ? 's' : ''} relatif${pr.strengths.length > 1 ? 's' : ''} : ${pr.strengths.map((i) => i.name).join(', ')}.`);
+  if (pr.weaknesses.length) lines.push(`Point${pr.weaknesses.length > 1 ? 's' : ''} faible${pr.weaknesses.length > 1 ? 's' : ''} relatif${pr.weaknesses.length > 1 ? 's' : ''} : ${pr.weaknesses.map((i) => i.name).join(', ')}.`);
+  if (pr.spread) lines.push(`Écart entre l’indice le plus haut et le plus bas : ${Math.round(pr.spread * 100)} points — profil ${pr.heterogeneous ? 'hétérogène (les indices ne racontent pas la même histoire : le score global résume mal le profil)' : 'plutôt homogène'}.`);
+  if (gap !== null && Math.abs(gap) >= 0.2) lines.push(`Compréhension verbale ${gap > 0 ? 'nettement au-dessus' : 'nettement en dessous'} du raisonnement perceptif (${Math.round(Math.abs(gap) * 100)} points).`);
+  main.innerHTML = `
+  <section class="panel">
+    <h1>Résultats de la batterie</h1>
+    <p class="big">Niveau ${esc(diff.name)} · ${done.length} subtest${done.length > 1 ? 's' : ''} · durée ${fmtTime(elapsed)}</p>
+    <h2>Indices</h2>
+    <div class="w-bars">${INDICES.map((i) => barRow(`<span class="badge">${i.id}</span> ${esc(i.name)}`, ix[i.id])).join('')}</div>
+    <div class="w-bars composite">
+      ${barRow('<span class="badge">IAG</span> Aptitude générale (ICV + IRP)', ix.IAG, 'comp')}
+      ${barRow('<span class="badge">ICC</span> Compétence cognitive (IMT + IVT)', ix.ICC, 'comp')}
+      ${barRow('<strong>Ensemble</strong>', ix.global, 'comp')}
+    </div>
+    ${lines.length ? `<h2>Lecture du profil</h2><ul>${lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
+    <h2>Subtests</h2>
+    <div class="table-wrap"><table class="data">
+      <thead><tr><th>Indice</th><th>Subtest</th><th>Score</th><th>Réussite</th><th>Niveaux</th></tr></thead>
+      <tbody>${done.map((r) => {
+        const st = subtestById[r.id];
+        const lv = r.items.map((it) => it.level);
+        return `<tr><td>${st.index}</td><td>${esc(st.name)}</td><td>${esc(scores[r.id].label)}</td><td>${pctText(scores[r.id].pct)}</td><td>${Math.min(...lv)}${Math.max(...lv) !== Math.min(...lv) ? `–${Math.max(...lv)}` : ''}</td></tr>`;
+      }).join('')}</tbody>
+    </table></div>
+    <p class="muted small">Taux de réussite bruts, sans étalonnage : ils ne se convertissent ni en notes standard ni en QI, et ne permettent aucun diagnostic. Pour les épreuves de vitesse, le taux compare la note à l’objectif du niveau (plafonné à 100 %).</p>
+    <p><a class="btn primary" href="#/wais">Nouvelle batterie</a> <a class="btn" href="#/stats">Statistiques</a></p>
+  </section>
+  <section class="correction">${done.map((r) => {
+    const st = subtestById[r.id];
+    return `<h2>${esc(st.name)} <span class="muted small">${esc(scores[r.id].label)}</span></h2>${r.items.map((it, k) => {
+      const a = r.results[k];
+      const gen = GENERATORS[it.category];
+      const status = a.status === 'stopped' ? ' (non administré)' : a.status === 'timeout' ? ' (temps écoulé)' : '';
+      return `<details class="corr ${a.correct ? 'ok' : 'ko'}" data-run="${r.id}" data-k="${k}">
+        <summary><span class="mark">${a.correct ? '✓' : '✗'}</span> Item ${k + 1} — niveau ${it.level}${status}</summary>
+        <div class="item">${itemHeader(it)}<p class="prompt">${esc(it.prompt)}</p>
+          <div class="stimulus">${gen.renderStimulus(it)}</div>
+          ${it.options ? optionsHtml(it) : ''}
+          ${explanationHtml(it, a.chosen, a.detail)}
+        </div>
+      </details>`;
+    }).join('')}`;
+  }).join('')}</section>`;
+  main.querySelectorAll('details.corr').forEach((det) => {
+    const r = done.find((x) => x.id === det.dataset.run);
+    const k = Number(det.dataset.k);
+    if (r.items[k].options) markOptions(det, r.items[k], r.results[k].chosen);
+  });
+  bindSeedCopy(main);
+  window.scrollTo(0, 0);
 }
 
 // ---------------------------------------------------------------- Statistiques et données
@@ -517,10 +777,10 @@ function viewStats() {
   main.innerHTML = `
   <section class="panel">
     <h1>Statistiques</h1>
-    <p>${played} item${played > 1 ? 's' : ''} joué${played > 1 ? 's' : ''} (entraînement et examen). Niveau maximal stable : niveau le plus élevé où au moins 70 % des ${STABLE_WINDOW} derniers items de ce niveau sont réussis.</p>
+    <p>${played} item${played > 1 ? 's' : ''} joué${played > 1 ? 's' : ''} (entraînement, examen et batterie WAIS-IV). Niveau maximal stable : niveau le plus élevé où au moins 70 % des ${STABLE_WINDOW} derniers items de ce niveau sont réussis.</p>
     <div class="table-wrap"><table class="data">
       <thead><tr><th>Catégorie</th><th>Items</th><th>Réussite</th><th>Temps moyen</th><th>Niveau actuel</th><th>Niveau stable</th></tr></thead>
-      <tbody>${CATEGORIES.map((c) => {
+      <tbody>${ALL_CATEGORIES.filter((c) => CATEGORIES.includes(c) || tb[c.id]).map((c) => {
         const o = tb[c.id];
         return `<tr><td>${esc(c.name)}</td><td>${o ? o.n : 0}</td><td>${pct(o)}</td><td>${o && o.n ? fmtTime(o.time / o.n) : '—'}</td><td>${s.levels[c.id]}</td><td>${maxStableLevel(s.history, c.id) ?? '—'}</td></tr>`;
       }).join('')}</tbody>
@@ -528,7 +788,7 @@ function viewStats() {
     <h2>Réussite par catégorie et par niveau</h2>
     <div class="table-wrap"><table class="data levels">
       <thead><tr><th>Catégorie</th>${Array.from({ length: 10 }, (_, i) => `<th>N${i + 1}</th>`).join('')}</tr></thead>
-      <tbody>${CATEGORIES.map((c) => `<tr><td>${esc(c.short)}</td>${Array.from({ length: 10 }, (_, i) => {
+      <tbody>${ALL_CATEGORIES.filter((c) => CATEGORIES.includes(c) || tb[c.id]).map((c) => `<tr><td>${esc(c.short)}</td>${Array.from({ length: 10 }, (_, i) => {
         const o = tb[c.id] && tb[c.id].levels[i + 1];
         const r = o && o.n ? o.ok / o.n : null;
         const band = r === null ? '' : r >= 0.7 ? 'r-hi' : r >= 0.4 ? 'r-mid' : 'r-lo';
@@ -597,6 +857,7 @@ function route() {
   if (page === 'train') viewTrain(arg);
   else if (page === 'exam') viewExam();
   else if (page === 'replay') viewReplay(arg);
+  else if (page === 'wais') viewWais();
   else if (page === 'stats') viewStats();
   else viewHome();
   main.focus({ preventScroll: true });

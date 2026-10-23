@@ -15,6 +15,23 @@ export const CATEGORIES = [
   { id: 'memory', name: 'Mémoire de travail', short: 'Mémoire' },
 ];
 
+// Subtests de type WAIS-IV (les Matrices réutilisent la catégorie « matrices »).
+export const WAIS_CATEGORIES = [
+  { id: 'similitudes', name: 'Similitudes', short: 'Similitudes' },
+  { id: 'vocabulaire', name: 'Vocabulaire', short: 'Vocabulaire' },
+  { id: 'information', name: 'Information', short: 'Information' },
+  { id: 'cubes', name: 'Cubes', short: 'Cubes' },
+  { id: 'puzzles', name: 'Puzzles visuels', short: 'Puzzles' },
+  { id: 'balances', name: 'Balances', short: 'Balances' },
+  { id: 'chiffres', name: 'Mémoire des chiffres', short: 'Chiffres' },
+  { id: 'arithmetique', name: 'Arithmétique', short: 'Arithmétique' },
+  { id: 'lettresChiffres', name: 'Séquence lettres-chiffres', short: 'Lettres-chiffres' },
+  { id: 'symboles', name: 'Symboles', short: 'Symboles' },
+  { id: 'code', name: 'Code', short: 'Code' },
+];
+
+export const ALL_CATEGORIES = CATEGORIES.concat(WAIS_CATEGORIES);
+
 export const MAX_ATTEMPTS = 400;
 
 export function generateFromSeed(seedStr, stats = null) {
